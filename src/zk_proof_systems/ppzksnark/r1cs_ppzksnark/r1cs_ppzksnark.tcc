@@ -430,6 +430,26 @@ r1cs_ppzksnark_keypair<ppT> r1cs_ppzksnark_generator(
 
     return r1cs_ppzksnark_keypair<ppT>(std::move(pk), std::move(vk));
 }
+template <typename T, typename A, typename B>
+knowledge_commitment<A, B >  compute_proof_Knowledge_Commitment(const qap_witness<Fr<T> > &qap_wit,
+                                                                const knowledge_commitment_vector<A,B> &kcv,
+                                                                const Fr<T>  &zk_shift)
+{
+    knowledge_commitment<A, B> returnval = kcv[0]+zk_shift*kcv[qap_wit.num_variables()+1];
+    #ifdef MULTICORE
+    const size_t chunks = omp_get_max_threads(); // to override, set OMP_NUM_THREADS env var or call omp_set_num_threads()
+#else
+    const size_t chunks = 1;
+#endif
+
+    returnval = returnval + kc_multi_exp_with_mixed_addition<A, B, Fr<T> >(kcv,                                                                             1,1+qap_wit.num_variables(),
+    qap_wit.coefficients_for_ABCs.begin(), 
+    qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
+    chunks,
+    true);
+    return returnval;
+
+}
 
 template <typename T>
 G1<T> compute_proof_K(const qap_witness<Fr<T> > &qap_wit, const G1_vector<T> &K_query, const G1<T> &zk_shift)
