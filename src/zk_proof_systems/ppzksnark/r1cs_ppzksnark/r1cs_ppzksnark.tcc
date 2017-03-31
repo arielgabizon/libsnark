@@ -431,6 +431,38 @@ r1cs_ppzksnark_keypair<ppT> r1cs_ppzksnark_generator(
     return r1cs_ppzksnark_keypair<ppT>(std::move(pk), std::move(vk));
 }
 
+template <typename T>
+G1<T> compute_proof_K(const qap_witness<Fr<T> > &qap_wit, const G1_vector<T> &K_query, const G1<T> &zk_shift)
+{
+     #ifdef MULTICORE
+        const size_t chunks = omp_get_max_threads(); // to override, set OMP_NUM_THREADS env var or call omp_set_num_threads()
+    #else
+        const size_t chunks = 1;
+    #endif
+    G1<T> g_K = K_query[0] + zk_shift;
+    g_K = g_K + multi_exp_with_mixed_addition<G1<T>, Fr<T> >(K_query.begin()+1, K_query.begin()+1+qap_wit.num_variables(),
+                                                                 qap_wit.coefficients_for_ABCs.begin(), qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
+                                                                 chunks, true);
+    return g_K;
+}
+
+
+template <typename T>
+G1<T> compute_proof_H(const qap_witness<Fr<T> > &qap_wit, const G1_vector<T> &H_query)
+{
+    G1<T> g_H = G1<T>::zero();
+    #ifdef MULTICORE
+        const size_t chunks = omp_get_max_threads(); // to override, set OMP_NUM_THREADS env var or call omp_set_num_threads()
+    #else
+        const size_t chunks = 1;
+    #endif
+    g_H = g_H + multi_exp<G1<T>, Fr<T> >(H_query.begin(), H_query.begin()+qap_wit.degree()+1,
+                                             qap_wit.coefficients_for_H.begin(), qap_wit.coefficients_for_H.begin()+qap_wit.degree()+1,
+                                             chunks, true);
+    return g_H;
+}
+
+
 template <typename ppT>
 r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const r1cs_ppzksnark_proving_key<ppT> &pk,
                                                 const r1cs_ppzksnark_primary_input<ppT> &primary_input,
@@ -456,16 +488,16 @@ r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const r1cs_ppzksnark_proving_key
     qap_instance_evaluation<Fr<ppT> > qap_inst = r1cs_to_qap_instance_map_with_evaluation(constraint_system, t);
     assert(qap_inst.is_satisfied(qap_wit));
 #endif
-
+/*
     knowledge_commitment<G1<ppT>, G1<ppT> > g_A = pk.A_query[0] + qap_wit.d1*pk.A_query[qap_wit.num_variables()+1];
     knowledge_commitment<G2<ppT>, G1<ppT> > g_B = pk.B_query[0] + qap_wit.d2*pk.B_query[qap_wit.num_variables()+1];
     knowledge_commitment<G1<ppT>, G1<ppT> > g_C = pk.C_query[0] + qap_wit.d3*pk.C_query[qap_wit.num_variables()+1];
-
-    G1<ppT> g_H = G1<ppT>::zero();
+*/
+    /*G1<ppT> g_H = G1<ppT>::zero();
     G1<ppT> g_K = (pk.K_query[0] +
                    qap_wit.d1*pk.K_query[qap_wit.num_variables()+1] +
                    qap_wit.d2*pk.K_query[qap_wit.num_variables()+2] +
-                   qap_wit.d3*pk.K_query[qap_wit.num_variables()+3]);
+                   qap_wit.d3*pk.K_query[qap_wit.num_variables()+3]);*/
 
 #ifdef DEBUG
     for (size_t i = 0; i < qap_wit.num_inputs() + 1; ++i)
@@ -479,45 +511,44 @@ r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const r1cs_ppzksnark_proving_key
     assert(pk.K_query.size() == qap_wit.num_variables()+4);
 #endif
 
-#ifdef MULTICORE
+/*#ifdef MULTICORE
     const size_t chunks = omp_get_max_threads(); // to override, set OMP_NUM_THREADS env var or call omp_set_num_threads()
 #else
     const size_t chunks = 1;
 #endif
-
+*/
     enter_block("Compute the proof");
 
     enter_block("Compute answer to A-query", false);
-    g_A = g_A + kc_multi_exp_with_mixed_addition<G1<ppT>, G1<ppT>, Fr<ppT> >(pk.A_query,
-                                                                             1, 1+qap_wit.num_variables(),
-                                                                             qap_wit.coefficients_for_ABCs.begin(), qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
-                                                                             chunks, true);
+    auto g_A = compute_proof_Knowledge_Commitment<ppT, G1<ppT>, G1<ppT> >(qap_wit, pk.A_query, qap_wit.d1);
     leave_block("Compute answer to A-query", false);
 
     enter_block("Compute answer to B-query", false);
-    g_B = g_B + kc_multi_exp_with_mixed_addition<G2<ppT>, G1<ppT>, Fr<ppT> >(pk.B_query,
-                                                                             1, 1+qap_wit.num_variables(),
-                                                                             qap_wit.coefficients_for_ABCs.begin(), qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
-                                                                             chunks, true);
+    auto g_B = compute_proof_Knowledge_Commitment<ppT, G2<ppT>, G1<ppT> >(qap_wit, pk.B_query, qap_wit.d2);
+
     leave_block("Compute answer to B-query", false);
 
     enter_block("Compute answer to C-query", false);
-    g_C = g_C + kc_multi_exp_with_mixed_addition<G1<ppT>, G1<ppT>, Fr<ppT> >(pk.C_query,
-                                                                             1, 1+qap_wit.num_variables(),
-                                                                             qap_wit.coefficients_for_ABCs.begin(), qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
-                                                                             chunks, true);
+    auto g_C = compute_proof_Knowledge_Commitment<ppT, G1<ppT>, G1<ppT> >(qap_wit, pk.C_query, qap_wit.d3);
     leave_block("Compute answer to C-query", false);
 
     enter_block("Compute answer to H-query", false);
-    g_H = g_H + multi_exp<G1<ppT>, Fr<ppT> >(pk.H_query.begin(), pk.H_query.begin()+qap_wit.degree()+1,
+    auto g_H = compute_proof_H<ppT>(qap_wit, pk.H_query);
+
+    /*g_H = g_H + multi_exp<G1<ppT>, Fr<ppT> >(pk.H_query.begin(), pk.H_query.begin()+qap_wit.degree()+1,
                                              qap_wit.coefficients_for_H.begin(), qap_wit.coefficients_for_H.begin()+qap_wit.degree()+1,
-                                             chunks, true);
+                                             chunks, true);*/
     leave_block("Compute answer to H-query", false);
 
     enter_block("Compute answer to K-query", false);
-    g_K = g_K + multi_exp_with_mixed_addition<G1<ppT>, Fr<ppT> >(pk.K_query.begin()+1, pk.K_query.begin()+1+qap_wit.num_variables(),
+    G1<ppT> zk_shift = qap_wit.d1*pk.K_query[qap_wit.num_variables()+1] +
+                   qap_wit.d2*pk.K_query[qap_wit.num_variables()+2] +
+                   qap_wit.d3*pk.K_query[qap_wit.num_variables()+3];
+    G1<ppT> g_K = compute_proof_K<ppT>(qap_wit, pk.K_query, zk_shift);
+    /*g_K = g_K + multi_exp_with_mixed_addition<G1<ppT>, Fr<ppT> >(pk.K_query.begin()+1, pk.K_query.begin()+1+qap_wit.num_variables(),
                                                                  qap_wit.coefficients_for_ABCs.begin(), qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
                                                                  chunks, true);
+   */
     leave_block("Compute answer to K-query", false);
 
     leave_block("Compute the proof");
@@ -529,7 +560,6 @@ r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const r1cs_ppzksnark_proving_key
 
     return proof;
 }
-
 template <typename ppT>
 r1cs_ppzksnark_processed_verification_key<ppT> r1cs_ppzksnark_verifier_process_vk(const r1cs_ppzksnark_verification_key<ppT> &vk)
 {
