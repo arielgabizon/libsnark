@@ -442,7 +442,7 @@ knowledge_commitment<A, B >  compute_proof_Knowledge_Commitment(const qap_witnes
     const size_t chunks = 1;
 #endif
 
-    returnval = returnval + kc_multi_exp_with_mixed_addition<A, B, Fr<T> >(kcv,                                                                             1,1+qap_wit.num_variables(),
+    returnval = returnval + kc_multi_exp_with_mixed_addition<A, B, Fr<T> >(kcv,1,1+qap_wit.num_variables(),
     qap_wit.coefficients_for_ABCs.begin(), 
     qap_wit.coefficients_for_ABCs.begin()+qap_wit.num_variables(),
     chunks,
@@ -576,6 +576,99 @@ r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const r1cs_ppzksnark_proving_key
     leave_block("Call to r1cs_ppzksnark_prover");
 
     r1cs_ppzksnark_proof<ppT> proof = r1cs_ppzksnark_proof<ppT>(std::move(g_A), std::move(g_B), std::move(g_C), std::move(g_H), std::move(g_K));
+    //proof.print_size();
+
+    return proof;
+}
+
+
+//this version reads the proving key piece by piece as needed from a file to save memory usage
+template <typename ppT>
+r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const std::istream &proving_key_file,
+                                                const r1cs_ppzksnark_primary_input<ppT> &primary_input,
+                                                const r1cs_ppzksnark_auxiliary_input<ppT> &auxiliary_input,
+                                                const r1cs_ppzksnark_constraint_system<ppT> &constraint_system)
+{
+    enter_block("Call to r1cs_ppzksnark_prover");
+
+#ifdef DEBUG
+    assert(constraint_system.is_satisfied(primary_input, auxiliary_input));
+#endif
+
+    const Fr<ppT> d1 = Fr<ppT>::random_element(),
+        d2 = Fr<ppT>::random_element(),
+        d3 = Fr<ppT>::random_element();
+
+    enter_block("Compute the polynomial H");
+    const qap_witness<Fr<ppT> > qap_wit = r1cs_to_qap_witness_map(constraint_system, primary_input, auxiliary_input, d1, d2, d3);
+    leave_block("Compute the polynomial H");
+
+#ifdef DEBUG
+    const Fr<ppT> t = Fr<ppT>::random_element();
+    qap_instance_evaluation<Fr<ppT> > qap_inst = r1cs_to_qap_instance_map_with_evaluation(constraint_system, t);
+    assert(qap_inst.is_satisfied(qap_wit));
+#endif
+    r1cs_ppzksnark_proof<ppT> proof;
+
+/*TODO: add these checks back?
+#ifdef DEBUG
+    for (size_t i = 0; i < qap_wit.num_inputs() + 1; ++i)
+    {
+        assert(pk.A_query[i].g == G1<ppT>::zero());
+    }
+    assert(pk.A_query.domain_size() == qap_wit.num_variables()+2);
+    assert(pk.B_query.domain_size() == qap_wit.num_variables()+2);
+    assert(pk.C_query.domain_size() == qap_wit.num_variables()+2);
+    assert(pk.H_query.size() == qap_wit.degree()+1);
+    assert(pk.K_query.size() == qap_wit.num_variables()+4);
+#endif
+*/
+    enter_block("Compute the proof");
+    {
+        
+        enter_block("Compute answer to A-query", false);
+        knowledge_commitment_vector<G1<ppT>, G1<ppT> > A_query;
+        proving_key_file >> A_query; 
+        proof.g_A = compute_proof_Knowledge_Commitment<ppT, G1<ppT>, G1<ppT> >(A_query, qap_wit.d1);
+        leave_block("Compute answer to A-query", false);
+    }
+
+    {
+        enter_block("Compute answer to B-query", false);
+        knowledge_commitment_vector<G2<ppT>, G1<ppT> > B_query;
+        proving_key_file >> B_query;
+        proof.g_B = compute_proof_Knowledge_Commitment<ppT, G2<ppT>, G1<ppT> >(qap_wit, B_query, qap_wit.d2);
+        leave_block("Compute answer to B-query", false);
+    }
+
+    {
+        enter_block("Compute answer to C-query", false);
+        knowledge_commitment_vector<G1<ppT>, G1<ppT> > C_query;
+        proving_key_file >> C_query;
+        proof.g_C = compute_proof_Knowledge_Commitment<ppT, G1<ppT>, G1<ppT> >(qap_wit, C_query, qap_wit.d3);
+        leave_block("Compute answer to C-query", false);
+    }
+
+    {
+        enter_block("Compute answer to H-query", false);
+        G1_vector<ppT> H_query;
+        proving_key_file >> H_query;
+        proof.g_H = compute_proof_H<ppT>(qap_wit, H_query);
+        leave_block("Compute answer to H-query", false);
+    }
+    { 
+        enter_block("Compute answer to K-query", false);
+        G1_vector<ppT> K_query;
+        proving_key_file >> K_query;
+        G1<ppT> zk_shift = qap_wit.d1*K_query[qap_wit.num_variables()+1] +
+                           qap_wit.d2*K_query[qap_wit.num_variables()+2] +
+                           qap_wit.d3*K_query[qap_wit.num_variables()+3];
+        proof.g_K = compute_proof_K<ppT>(qap_wit, K_query, zk_shift);
+        leave_block("Compute answer to K-query", false);
+    }
+    leave_block("Compute the proof");
+
+    leave_block("Call to r1cs_ppzksnark_prover");
     //proof.print_size();
 
     return proof;
