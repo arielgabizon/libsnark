@@ -629,7 +629,7 @@ r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(std::ifstream &proving_key_file,
         enter_block("Compute answer to A-query", false);
         knowledge_commitment_vector<G1<ppT>, G1<ppT> > A_query;
         proving_key_file >> A_query; 
-        proof.g_A = compute_proof_Knowledge_Commitment<ppT, G1<ppT>, G1<ppT> >(A_query, qap_wit.d1);
+        proof.g_A = compute_proof_Knowledge_Commitment<ppT, G1<ppT>, G1<ppT> >(qap_wit, A_query, qap_wit.d1);
         leave_block("Compute answer to A-query", false);
     }
 
