@@ -584,7 +584,7 @@ r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const r1cs_ppzksnark_proving_key
 
 //this version reads the proving key piece by piece as needed from a file to save memory usage
 template <typename ppT>
-r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(const std::ifstream &proving_key_file,
+r1cs_ppzksnark_proof<ppT> r1cs_ppzksnark_prover(std::ifstream &proving_key_file,
                                                 const r1cs_ppzksnark_primary_input<ppT> &primary_input,
                                                 const r1cs_ppzksnark_auxiliary_input<ppT> &auxiliary_input,
                                                 const r1cs_ppzksnark_constraint_system<ppT> &constraint_system)
